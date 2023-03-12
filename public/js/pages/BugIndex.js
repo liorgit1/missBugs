@@ -1,0 +1,102 @@
+// services
+import { eventBus } from '../services/event-bus.service.js'
+import { bugService } from '../services/bug.service.js'
+import { utilService } from '../services/util.service.js'
+import { showErrorMsg, showSuccessMsg } from '../services/event-bus.service.js'
+// cmps
+import bugList from '../cmps/BugList.js'
+import bugFilter from '../cmps/BugFilter.js'
+
+export default {
+  template: `
+    <section class="bug-app">
+        <div class="subheader">
+          <bug-filter @setFilterBy="setFilterBy"></bug-filter> ||
+          <router-link to="/bug/edit">Add New Bug</router-link> 
+          <label>
+				Descending
+				<input  class="sort-desc" type="checkbox" @input="onSetDesc" />
+			</label>
+      <select class="sort-by" @change="loadBugs" v-model="sortBy.by">
+                <option value="">Select Sorting</option>
+                <option value="createdAt">CreatedAt</option>
+                <option value="title">Title</option>
+                <option value="severity">Severity</option>
+            </select>
+        </div>
+        <bugList v-if="bugs" :bugs="bugs" @removeBug="removeBug"></bugList>
+        <button @click="getPage(-1)">Prev</button>
+        <button @click="getPage(1)">Next</button>
+    </section>
+
+    
+
+       
+
+    `,
+  data() {
+    return {
+      sortBy: {
+        by: '',
+        desc: 1
+      },
+      bugs: [],
+      filterBy: { title: '', page: 0, severity: null, labels: null },
+      toggle: false,
+      totalPages: 0
+    }
+  },
+  created() {
+    this.loadBugs()
+    this.loadBugsLater = utilService.debounce(this.loadBugs, 500)
+    this.unsubscribe = eventBus.on('reloadBugs', this.loadBugs)
+  },
+  methods: {
+    loadBugs() {
+      bugService.query(this.filterBy, this.sortBy).then(({ bugs, totalPages }) => {
+        this.bugs = bugs
+        this.totalPages = totalPages
+      })
+    },
+    getPage(dir) {
+      this.filterBy.page += dir
+      if (this.filterBy.page >= this.totalPages) this.filterBy.page = 0;
+      if (this.filterBy.page < 0) this.filterBy.page = this.totalPages - 1
+      this.loadBugs()
+    },
+    setFilterBy(filterBy) {
+      this.filterBy = filterBy
+      this.loadBugsLater()
+    },
+    removeBug(bugId) {
+      bugService.remove(bugId)
+        .then(() => {
+          const idx = this.bugs.findIndex(bug => bug._id === bugId)
+          this.bugs.splice(idx, 1)
+          showSuccessMsg('bug removed')
+        })
+        .catch(err => {
+          showErrorMsg('bug remove failed')
+        })
+    },
+    onSetDesc() {
+      //HERE
+      this.sortBy.desc *= -1
+      this.loadBugs()
+    },
+  },
+
+  computed: {
+    filteredBugs() {
+      const regex = new RegExp(this.filterBy.title, 'i')
+      return this.bugs.filter(bug => regex.test(bug.title))
+    },
+  },
+  components: {
+    bugList,
+    bugFilter,
+  },
+   unmounted() {
+    this.unsubscribe()
+  },
+}
